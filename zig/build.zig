@@ -28,8 +28,18 @@ pub fn build(b: *std.Build) void {
 fn createBuildOptions(b: *std.Build) BuildOptions {
     const include_llvm = b.option(bool, "llvm", "Include LLVM in build") orelse false;
     const git_version = b.run(&.{ "git", "log", "--pretty=format:%cI-%h", "-1" });
-    const compile_date_with_extra = b.run(&.{ "date", "+%Y-%m-%dT%H:%M:%S%z" });
-    const compile_date = std.mem.trim(u8, compile_date_with_extra, " \n\r");
+    //const compile_date_with_extra = std.time.timestamp();
+    //const compile_date = std.mem.trim(u8, compile_date_with_extra, " \n\r");
+    //
+    // zig
+    //var buf: [20]u8 = undefined; // Buffer large enough for any i64
+
+        // bufPrint returns a slice of the buffer containing the actual string
+    //    const result = try std.fmt.bufPrint(&buf, "{d}", .{value});
+    //
+    //
+    const compile_date = "2026-02-04 16:56:30.56";
+
     const encoding_option = b.option(Encoding, "encoding", "Object encoding");
     const max_classes = b.option(u16, "maxClasses", "Maximum number of classes") orelse 255;
     const trace = b.option(bool, "trace", "trace execution") orelse false;
