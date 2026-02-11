@@ -571,6 +571,9 @@ pub const Object = packed struct(u64) {
     pub inline fn isImmediateWhenNotDouble(self: object.Object) bool {
         return self.rawU() & 1 != 0;
     }
+    pub inline fn isHeapObject(self: Object) bool {
+        return self.tag == .heap;
+    }
     pub inline fn ifHeapObject(self: object.Object) ?*HeapObject {
         if (self.tag == .heap) return @ptrFromInt(@as(u64,@bitCast(self)));
         return null;
