@@ -176,6 +176,9 @@ pub const Extra = packed struct {
         trace("primitiveFailed: {f} {f}", .{ extra, pc });
         return @call(tailCall, process.check(pc.prev().prim()), .{ pc, sp, process, context, extra.encoded() });
     }
+    pub fn inlinePrimitiveFailed(_: PC, _: SP, _: *Process, _: *Context, _: Extra) Result {
+        @panic("inlinePrimitiveFailed");
+    }
     pub fn format(
         self: Extra,
         writer: anytype,
