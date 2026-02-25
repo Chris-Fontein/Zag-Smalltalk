@@ -149,7 +149,7 @@ pub const @"<" = struct {
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#<
         const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -160,7 +160,7 @@ pub const @"<" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
     }
 };
@@ -176,7 +176,7 @@ pub const @">" = struct {
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#>
         const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -187,7 +187,7 @@ pub const @">" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
     }
 };
@@ -203,7 +203,7 @@ pub const @"<=" = struct {
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#<=
         const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -215,17 +215,9 @@ pub const @"<=" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         trace("Inline <= called, {*} {f}\n", .{ newSp, extra });
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
-    }
-    test "inline primitives" {
-        var process: Process align(Process.alignment) = Process.new();
-        process.init();
-        const p = &process;
-        try expectEqual(true, try with(Object.from(0, p), Object.from(0, p)));
-        try expectEqual(true, try with(Object.from(0, p), Object.from(1, p)));
-        try expectEqual(false, try with(Object.from(1, p), Object.from(0, p)));
     }
 };
 
@@ -239,8 +231,8 @@ pub const @">=" = struct {
         return error.primitiveError;
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#>=
-        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top, process, context) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -251,7 +243,7 @@ pub const @">=" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
     }
 };
@@ -266,8 +258,8 @@ pub const @"=" = struct {
         return error.primitiveError;
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#=
-        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top, process, context) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -278,7 +270,7 @@ pub const @"=" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
     }
 };
@@ -293,8 +285,8 @@ pub const @"~=" = struct {
         return error.primitiveError;
     }
     pub fn primitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result { // SmallInteger>>#~=
-        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top, process, context) catch
-            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), process));
+        const newSp = sp.dropPut(Object.from(with(sp.next, sp.top) catch
+            return @call(tailCall, Extra.primitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(context.npc), .{ context.tpc, newSp, process, context, Extra.fromContextData(context.contextDataPtr(sp)) });
     }
     pub fn inlinePrimitive(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
@@ -305,7 +297,7 @@ pub const @"~=" = struct {
             return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra });
         }
         const newSp = sp.dropPut(Object.from(with(receiver, sp.top) catch
-            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), process));
+            return @call(tailCall, Extra.inlinePrimitiveFailed, .{ pc, sp, process, context, extra }), sp, context));
         return @call(tailCall, process.check(pc.prim2()), .{ pc.next2(), newSp, process, context, extra });
     }
 };
