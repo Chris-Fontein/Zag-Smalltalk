@@ -48,7 +48,11 @@ const ZagImageHeader = struct {
     classTable: Object,
     symTable: Object,
     codeAddresses: Object,
-    const magicTag: u64 = 0x6567616D4967615A; // "ZagImage" in little-endian
+    fn magicTag() u64 {
+        if (zag.encoding.tag(config.objectEncoding)) |tag|
+            return 0x616D4967615A + (tag << 48); // "ZagIma" in little-endian
+        return 0;
+    }
     const intHash = std.hash.int;
 };
 var zagImageHeader: ZagImageHeader = undefined;
@@ -96,7 +100,7 @@ fn checkHeader(file: std.fs.File) !void {
     if (stat.size < @sizeOf(ZagImageHeader) or (stat.size & 7) != 0)
         return error.WrongImageFileSize;
     _ = try file.read(@as([*]u8, @ptrCast(&zagImageHeader))[0..@sizeOf(ZagImageHeader)]);
-    if (zagImageHeader.magic != ZagImageHeader.magicTag)
+    if (zagImageHeader.magic != ZagImageHeader.magicTag())
         return error.BadImageMagic;
 }
 fn loadSymbols() !void {
@@ -116,10 +120,10 @@ fn loadSymbols() !void {
     }
 }
 fn loadClassTable() !void {
-    assert(zagImageHeader.classTable == object.Nil);
+    assert(zagImageHeader.classTable.equals(object.Nil()));
 }
 fn loadDispatchTable(file: std.fs.File) !void {
-    execute.loadIntrinsicsDispatch();
+//    execute.loadIntrinsicsDispatch();
     const stat = try file.stat();
     assert(stat.size == @sizeOf(ZagImageHeader)); // no dispatch to read
     //    _ = references;
@@ -136,7 +140,7 @@ fn loadCodeAddresses() !void {
         std.log.err("my primitives length: {} file:{}\n", .{ threadedFunctions.len, codeAddresses.len });
     for (&map, &threadedFunctions, codeAddresses) |*element, o, f| {
         element.files = f;
-        element.ours = @intFromPtr(o.f);
+        element.ours = @intFromPtr(o);
     }
 }
 fn processHeader(file: std.fs.File) !void {
@@ -147,7 +151,8 @@ fn processHeader(file: std.fs.File) !void {
     try loadClassTable();
 }
 fn runImage() !void {
-    _ = try execute.mainSendTo(zagImageHeader.selector, zagImageHeader.target);
+    @panic("runImage");
+//    _ = try execute.mainSendTo(zagImageHeader.selector, zagImageHeader.target);
 }
 fn readHeap(file: std.fs.File, address: u64) !void {
     //const stat = try file.stat();std.log.err("heap stat: {}\naddress: 0x{x}\n", .{ stat, address });
@@ -162,41 +167,51 @@ fn readProcess(file: std.fs.File, address: u64) !void {
     @panic("not implemented");
 }
 fn loadAndRun(directory: [*:0]const u8) !void {
-    var dir = try std.fs.cwd().openDirZ(directory, .{});
+    var dir = try std.fs.cwd().openDirZ(directory, .{ .iterate = true });
     defer dir.close();
-    {
-        var headerFile: ?std.fs.File = null;
-        defer if (headerFile) |file| file.close();
-        var it = dir.iterate();
-        while (try it.next()) |entry| {
-            const name = entry.name;
-            if (entry.kind == .file) {
-                if (extensionMatches(name, ".header")) {
-                    headerFile = try dir.openFile(name, .{});
-                    try checkHeader(headerFile.?);
-                } else {
-                    const file = try dir.openFile(name, .{});
-                    defer file.close();
-                    const address = parseAddress(name);
-                    if (extensionMatches(name, ".heap")) {
-                        try readHeap(file, address);
-                    } else if (extensionMatches(name, ".lho")) {
-                        try readLargeHeapObject(file, address);
-                    } else if (extensionMatches(name, ".process")) {
-                        try readProcess(file, address);
-                    } else {
-                        std.log.err("unknown file: {s}\n", .{name});
-                        return error.UnknownFile;
-                    }
-                }
+    var headerFile: ?std.fs.File = null;
+    defer if (headerFile) |file| file.close();
+
+    var iter = dir.iterate();
+
+    // Iterate through the directory
+    while (try iter.next()) |entry| {
+        // entry.name is a []const u8 (Zig slice)
+        // entry.kind is an enum (file, directory, etc.)
+        const name = entry.name;
+        const type_str = if (entry.kind == .directory) "DIR " else "FILE";
+
+        std.debug.print("[{s}] {s}\n", .{ type_str, name });
+        if (entry.kind == .file) {
+            if (extensionMatches(name, ".header")) {
+                headerFile = try dir.openFile(name, .{});
+                try checkHeader(headerFile.?);
             } else {
-                std.log.err("unknown non-file: {s}\n", .{name});
-                return error.UnknownNonFile;
+                const file = try dir.openFile(name, .{});
+                defer file.close();
+                const address = parseAddress(name);
+                if (extensionMatches(name, ".heap")) {
+                    try readHeap(file, address);
+                } else if (extensionMatches(name, ".lho")) {
+                    try readLargeHeapObject(file, address);
+                } else if (extensionMatches(name, ".process")) {
+                    try readProcess(file, address);
+                } else {
+                    std.log.err("unknown file: {s}\n", .{name});
+                    return error.UnknownFile;
+                }
             }
+        } else {
+            std.log.err("unknown non-file: {s}\n", .{name});
+            return error.UnknownNonFile;
         }
-        try processHeader(headerFile.?);
     }
-    try runImage();
+    if (headerFile) |file| {
+        try processHeader(file);
+        try runImage();
+    } else {
+        std.log.err("no header file found in: {s}",.{directory});
+    }
 }
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
@@ -212,7 +227,7 @@ pub fn main() !void {
             usage();
         } else {
             _ = zag.controlWords.drop.threadedFn;
-            // try loadAndRun(arg);
+            try loadAndRun(arg);
         }
         while (argsIterator.next()) |extra|
             std.log.err(

@@ -7,13 +7,28 @@ Class {
 	#classVars : [
 		'AgeStatic',
 		'BaseAddress',
+		'ClassBlockAssignInstance',
+		'ClassBlockAssignLocal',
 		'ClassCharacter',
 		'ClassDoubleWordArray',
 		'ClassFalse',
 		'ClassFloat',
+		'ClassLLVM',
+		'ClassSignature',
 		'ClassSmallInteger',
 		'ClassString',
 		'ClassSymbol',
+		'ClassThunkFloat',
+		'ClassThunkHeap',
+		'ClassThunkImmediate',
+		'ClassThunkInstance',
+		'ClassThunkLocal',
+		'ClassThunkReturnCharacter',
+		'ClassThunkReturnFloat',
+		'ClassThunkReturnImmediate',
+		'ClassThunkReturnInstance',
+		'ClassThunkReturnLocal',
+		'ClassThunkReturnObject',
 		'ClassTrue',
 		'ClassUndefinedObject',
 		'FormatDirectIndexed',
@@ -160,49 +175,27 @@ ZagConstants class >> generateInitializeThreadedConstants [
 		variable isReferenced ifFalse: [ self removeClassVariable: variable ] ].
 	itc := WriteStream on: ''.
 	itc
-		<< 'initializeThreadedConstants';
-		cr.
-	itc
-		<< $";
-		<< ' - do not edit - instead `do` the following comment ';
-		<< $";
-		cr.
-	itc
-		<< $";
-		<< ' self generateInitializeThreadedConstants ';
-		<< $";
-		cr.
+		<< 'initializeThreadedConstants'.
 	adwa := WriteStream on: ''.
 	adwa
-		<< 'asArray';
-		cr.
-	adwa
-		<< $";
-		<< ' - do not edit - instead `do` the following comment ';
-		<< $";
-		cr.
-	adwa
-		<< $";
-		<< ' self generateInitializeThreadedConstants ';
-		<< $";
-		cr.
+		<< 'asArray'.
+	ltc := WriteStream on: ''.
+	ltc
+		<< 'loadThreadedConstants: array'.
+	{ itc. adwa. ltc } do: [ : stream |
+		stream
+			cr;
+			<< $";
+			<< ' - do not edit - instead `do` the following comment ';
+			<< $";
+			cr;
+			<< $";
+			<< ' self generateInitializeThreadedConstants ';
+			<< $";
+			cr ].
 	adwa
 		tab;
 		<< '^ {';
-		cr.
-	ltc := WriteStream on: ''.
-	ltc
-		<< 'loadThreadedConstants: array';
-		cr.
-	ltc
-		<< $";
-		<< ' - do not edit - instead `do` the following comment ';
-		<< $";
-		cr.
-	ltc
-		<< $";
-		<< ' self generateInitializeThreadedConstants ';
-		<< $";
 		cr.
 	self api methodDictionary keys sorted withIndexDo: [
 		:key
@@ -252,15 +245,30 @@ ZagConstants class >> initialize [
 { #category : 'class initialization' }
 ZagConstants class >> initializeClassConstants [
 
-	ClassSymbol := 14.
-	ClassSmallInteger := 15.
-	ClassFalse := 16.
-	ClassTrue := 17.
-	ClassCharacter := 18.
-	ClassUndefinedObject := 32.
+	ClassThunkReturnLocal := 1.
+	ClassThunkReturnInstance :=  2.
+	ClassThunkReturnObject :=  3.
+	ClassThunkReturnImmediate :=  4.
+	ClassThunkLocal :=  5.
+	ClassBlockAssignLocal :=  6.
+	ClassThunkInstance :=  7.
+	ClassBlockAssignInstance :=  8.
+	ClassThunkHeap :=  9.
+	ClassThunkImmediate :=  10.
+	ClassSymbol :=  11.
+	ClassFalse :=  12.
+	ClassTrue :=  13.
+	ClassCharacter :=  14.
+	ClassSignature :=  15.
+	ClassThunkReturnCharacter :=  16.
+	ClassThunkReturnFloat :=  17.
+	ClassThunkFloat :=  18.
+	ClassLLVM :=  19.
+	ClassUndefinedObject :=  20.
+	ClassSmallInteger := 21.
 	ClassFloat := 33.
-	ClassString := 40.
-	ClassDoubleWordArray := 42
+	ClassString := 37.
+	ClassDoubleWordArray := 39
 ]
 
 { #category : 'class initialization' }

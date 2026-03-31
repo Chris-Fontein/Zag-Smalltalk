@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
     const llvm_module = buildLLVMModule(b, target, optimize);
 
     // Main zag module
-    const zag = createZagModule(b, target, build_options, llvm_module);
+    const zag = createZagModule(b, target, optimize, build_options, llvm_module);
 
     // Main executable
     createMainExecutable(b, target, optimize, zag, build_options, llvm_module);
@@ -22,7 +22,8 @@ pub fn build(b: *std.Build) void {
 
     // Test and benchmark steps
     createTestStep(b, target, optimize, build_options, llvm_module);
-    createBenchStep(b, target, optimize, build_options, zag);
+    createBenchStep(b, target, .ReleaseFast, build_options, llvm_module);
+    createDocsStep(b, target, optimize, build_options, llvm_module);
 }
 
 fn createBuildOptions(b: *std.Build) BuildOptions {
@@ -70,6 +71,7 @@ fn addCommonOptions(options: *std.Build.Step.Options, build_options: BuildOption
 fn createZagModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
     build_options: BuildOptions,
     llvm_module: *std.Build.Module,
 ) *std.Build.Module {
@@ -80,6 +82,7 @@ fn createZagModule(
     const zag = b.createModule(.{
         .root_source_file = b.path("zag/zag.zig"),
         .target = target,
+        .optimize = optimize,
     });
     zag.addOptions("options", options);
 
@@ -121,6 +124,8 @@ fn createMainExecutable(
         exe.root_module.addImport("llvm-build-module", llvm_module);
     }
 
+    b.installArtifact(exe);
+
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
@@ -152,10 +157,10 @@ fn createExperimentExecutables(
     });
     b.installArtifact(fib);
 
-    const cnp = b.addExecutable(.{
-        .name = "cnp",
+    const cnpFib = b.addExecutable(.{
+        .name = "cnpFib",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("experiments/cnp.zig"),
+            .root_source_file = b.path("experiments/cnpFib.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -165,7 +170,7 @@ fn createExperimentExecutables(
         }),
         .use_llvm = true,
     });
-    b.installArtifact(cnp);
+    b.installArtifact(cnpFib);
 
     const branchPrediction = b.addExecutable(.{
         .name = "branchPrediction",
@@ -181,6 +186,60 @@ fn createExperimentExecutables(
         .use_llvm = true,
     });
     _ = branchPrediction;
+
+    const cnp = b.addExecutable(.{
+        .name = "cnp",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("experiments/cnp/cnp.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zag", .module = zag },
+            },
+            .omit_frame_pointer = build_options.omit_frame_pointer,
+        }),
+        .use_llvm = true,
+    });
+    b.installArtifact(cnp);
+    const run_cnp = b.addRunArtifact(cnp);
+    const run_cnp_step = b.step("cnp-run", "Build and run cnp (copy-and-patch JIT)");
+    run_cnp_step.dependOn(&run_cnp.step);
+
+    const cnp_bench = b.addExecutable(.{
+        .name = "cnp-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("experiments/cnp/bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zag", .module = zag },
+            },
+            .omit_frame_pointer = build_options.omit_frame_pointer,
+        }),
+        .use_llvm = true,
+    });
+    b.installArtifact(cnp_bench);
+    const run_cnp_bench = b.addRunArtifact(cnp_bench);
+    const run_cnp_bench_step = b.step("cnp-bench", "Run CNP JIT benchmarks");
+    run_cnp_bench_step.dependOn(&run_cnp_bench.step);
+
+    const cnp_fib_bench = b.addExecutable(.{
+        .name = "cnp-fib-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("experiments/cnp/fib_bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zag", .module = zag },
+            },
+            .omit_frame_pointer = build_options.omit_frame_pointer,
+        }),
+        .use_llvm = true,
+    });
+    b.installArtifact(cnp_fib_bench);
+    const run_cnp_fib_bench = b.addRunArtifact(cnp_fib_bench);
+    const run_cnp_fib_bench_step = b.step("cnp-fib-bench", "Run CNP JIT fibonacci benchmarks");
+    run_cnp_fib_bench_step.dependOn(&run_cnp_fib_bench.step);
 
     const fib_check = b.addExecutable(.{
         .name = "fib",
@@ -260,7 +319,7 @@ fn createBenchStep(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     build_options: BuildOptions,
-    zag: *std.Build.Module,
+    llvm_module: *std.Build.Module,
 ) void {
     const bench_encodings: []const Encoding =
         if (build_options.encoding_option) |specific_encoding|
@@ -269,40 +328,96 @@ fn createBenchStep(
             &[_]Encoding{
                 .nan,
                 .zag,
-                .zagAlt,
+                .zagSpur,
                 .spur,
                 .taggedInt,
+                .taggedPtr,
+                .taggedHigh,
+                .cachedPtr,
                 .ptr,
                 .onlyInt,
                 .onlyFloat,
             };
 
-    const bench_step = b.step("bench", "Run bench for all encoding types");
+    const bench_build_step = b.step("bench-build", "Build fib bench for all encoding types (no run)");
+    const bench_step = b.step("bench", "Run fib bench for all encoding types");
 
     for (bench_encodings) |enc| {
         const enc_options = b.addOptions();
         addCommonOptions(enc_options, build_options, enc);
 
-        const bench_module = b.createModule(.{
-            .root_source_file = b.path("experiments/fib.zig"),
+        const enc_zag = b.createModule(.{
+            .root_source_file = b.path("zag/zag.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                .{ .name = "zag", .module = zag },
-            },
-            .omit_frame_pointer = build_options.omit_frame_pointer,
         });
+        enc_zag.addOptions("options", enc_options);
+        if (build_options.include_llvm) {
+            enc_zag.addImport("llvm-build-module", llvm_module);
+        }
 
-        const enc_benchs = b.addExecutable(.{
-            .name = "bench",
-            .root_module = bench_module,
+        const bench_exe = b.addExecutable(.{
+            .name = b.fmt("fib-{s}", .{@tagName(enc)}),
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("experiments/fib.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zag", .module = enc_zag },
+                },
+                .omit_frame_pointer = build_options.omit_frame_pointer,
+            }),
             .use_llvm = true,
         });
-        enc_benchs.root_module.addOptions("options", enc_options);
 
-        const run_enc_benchs = b.addRunArtifact(enc_benchs);
-        bench_step.dependOn(&run_enc_benchs.step);
+        const arch_name = @tagName(target.result.cpu.arch);
+        const install = b.addInstallArtifact(bench_exe, .{
+            .dest_dir = .{ .override = .{ .custom = arch_name } },
+        });
+        bench_build_step.dependOn(&install.step);
+        bench_step.dependOn(&install.step);
+
+        const run_bench = b.addRunArtifact(bench_exe);
+        bench_step.dependOn(&run_bench.step);
     }
+}
+
+fn createDocsStep(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    build_options: BuildOptions,
+    llvm_module: *std.Build.Module,
+) void {
+    const options = b.addOptions();
+    const encoding = build_options.encoding_option orelse Encoding.default();
+    addCommonOptions(options, build_options, encoding);
+
+    const docs_module = b.createModule(.{
+        .root_source_file = b.path("zag/docs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    docs_module.addOptions("options", options);
+
+    if (build_options.include_llvm) {
+        docs_module.addImport("llvm-build-module", llvm_module);
+    }
+
+    const docs_lib = b.addLibrary(.{
+        .name = "zag",
+        .root_module = docs_module,
+        .linkage = .static,
+    });
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Build API documentation");
+    docs_step.dependOn(&install_docs.step);
 }
 
 fn buildLLVMModule(

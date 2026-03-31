@@ -1,3 +1,5 @@
+//! Heap object layout, allocation, and format helpers.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const mem = std.mem;
@@ -113,7 +115,7 @@ pub const Format = enum(u7) {
     pub inline fn hasIndexPointers(self: Self) bool {
         return self.hasPointers() and self.isIndexable();
     }
-    pub inline fn hasPointers(self: Self) bool {
+    inline fn hasPointers(self: Self) bool {
         return @intFromEnum(self) > LastPointerFree;
     }
     pub inline fn inHeapSize(self: Self, header: HeapHeader, obj: *const HeapObject) usize {
@@ -790,6 +792,12 @@ pub const HeapObjectSlice = []align(@alignOf(u64)) HeapObject;
 pub const HeapObjectConstPtr = *align(@alignOf(u64)) const HeapObject;
 pub const HeapObject = packed struct {
     header: HeapHeader,
+    pub fn format(
+        self: HeapObject,
+        writer: anytype,
+    ) !void {
+        try writer.print("{{{f}, ...}}", .{ self.header });
+    }
     pub inline //
     fn alignProperBoundary(self: HeapObjectArray) HeapObjectArray {
         if (@intFromPtr(self) & 8 == 0)
@@ -919,9 +927,9 @@ pub const HeapObject = packed struct {
         if (obj.ifHeapObject()) |otherHeapObject| {
             if (otherHeapObject.header.age.needsPromotionTo(head.age))
                 return error.needsPromotion;
-            const format = head.objectFormat;
-            const newFormat = format.operations().instVarWithPtr;
-            if (newFormat != format)
+            const fmt = head.objectFormat;
+            const newFormat = fmt.operations().instVarWithPtr;
+            if (newFormat != fmt)
                 self.header.objectFormat = newFormat;
         }
         ivs[index] = obj;

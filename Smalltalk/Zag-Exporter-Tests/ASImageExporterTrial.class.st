@@ -12,9 +12,24 @@ Class {
 }
 
 { #category : 'writing' }
+ASImageExporterTrial class >> doYoureself [
+
+	<script>
+	self imageFolder.
+	self new writeImageSending: #yourself to: #yourself
+]
+
+{ #category : 'writing' }
 ASImageExporterTrial class >> inspect42 [
 
 	<script>
 	self imageFolder.
 	self new writeImageSending: #inspect to: 42
+]
+
+{ #category : 'writing' }
+ASImageExporterTrial class >> resetImageFolder [
+
+	<script>
+	imageFolder := nil
 ]

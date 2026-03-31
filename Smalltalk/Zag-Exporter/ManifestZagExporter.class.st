@@ -20,7 +20,7 @@ ManifestZagExporter class >> ruleBadMessageRule2V1FalsePositive [
 ManifestZagExporter class >> ruleBooleanPrecedenceRuleV1FalsePositive [
 
 	<ignoreForCoverage>
-	^ #(#(#(#RGMethodDefinition #(#'ZagImageEncodeZag class' #double:for: #true)) #'2024-12-24T09:07:17.412955-05:00') )
+	^ #(#(#(#RGMethodDefinition #(#'ZagImageEncodeZag class' #double:for: #true)) #'2024-12-24T09:07:17.412955-05:00') #(#(#RGMethodDefinition #(#'ZagImageEncodeMix class' #double:for: #true)) #'2026-03-30T08:50:15.268553-04:00') )
 ]
 
 { #category : 'code-critics' }
@@ -41,7 +41,7 @@ ManifestZagExporter class >> ruleInconsistentMethodClassificationRuleV1FalsePosi
 ManifestZagExporter class >> ruleLongMethodsRuleV1FalsePositive [
 
 	<ignoreForCoverage>
-	^ #(#(#(#RGMethodDefinition #(#'ASAllocationInfo class' #headerIVars:indexed:element:weak: #true)) #'2024-12-08T22:22:57.079135-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #initialize #true)) #'2024-12-11T07:17:16.189773-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #initializeThreadedConstants #true)) #'2024-12-14T11:46:40.896487-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #generateInitializeThreadedConstants #true)) #'2025-01-10T13:21:02.602135-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #loadThreadedConstants: #true)) #'2025-01-25T09:26:57.975429-05:00') )
+	^ #(#(#(#RGMethodDefinition #(#'ASAllocationInfo class' #headerIVars:indexed:element:weak: #true)) #'2024-12-08T22:22:57.079135-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #initialize #true)) #'2024-12-11T07:17:16.189773-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #initializeThreadedConstants #true)) #'2024-12-14T11:46:40.896487-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #generateInitializeThreadedConstants #true)) #'2025-01-10T13:21:02.602135-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #loadThreadedConstants: #true)) #'2025-01-25T09:26:57.975429-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #initializeClassConstants #true)) #'2026-03-29T23:23:36.339825-04:00') )
 ]
 
 { #category : 'code-critics' }
@@ -62,7 +62,7 @@ ManifestZagExporter class >> rulePrecedenceRuleV1FalsePositive [
 ManifestZagExporter class >> ruleReCollectionAtCollectionSizeRuleV1FalsePositive [
 
 	<ignoreForCoverage>
-	^ #(#(#(#RGMethodDefinition #(#'ZagImageEncodeZag class' #double:for: #true)) #'2024-12-24T09:07:29.02622-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #loadThreadedConstants: #true)) #'2025-01-25T09:27:06.594071-05:00') )
+	^ #(#(#(#RGMethodDefinition #(#'ZagImageEncodeZag class' #double:for: #true)) #'2024-12-24T09:07:29.02622-05:00') #(#(#RGMethodDefinition #(#'ZagConstants class' #loadThreadedConstants: #true)) #'2025-01-25T09:27:06.594071-05:00') #(#(#RGMethodDefinition #(#'ZagImageEncodeMix class' #double:for: #true)) #'2026-03-30T08:49:54.804768-04:00') )
 ]
 
 { #category : 'code-critics' }

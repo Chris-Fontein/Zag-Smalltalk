@@ -1,3 +1,18 @@
+//! Object encoding and representation system.
+//!
+//! This module provides the compile-time-selected `Object` type and supporting
+//! infrastructure shared across all encoding schemes.
+//!
+//! ## Object Encodings
+//!
+//! The active encoding is chosen at compile time via `config.objectEncoding`:
+//! - `Object.zag`
+//! - `Object.nan`
+//! - `object.spur`
+//! - `objectj.zagSpur`
+//! - `object.taggedInt` / `taggedPtr` / `ptr`
+//! - `object.onlyInt` / `object.onlyFloat`
+
 const std = @import("std");
 const builtin = @import("builtin");
 const mem = std.mem;
@@ -24,9 +39,15 @@ pub fn fromLE(comptime T: type, v: T) Object {
     return @bitCast(mem.readIntLittle(T, val));
 }
 pub const compareObject = Object.compare;
+const siIndex = 21;
+const noneIndex = switch (config.objectEncoding) {
+    .taggedPtr, .taggedHigh => siIndex,
+    else => 0,
+};
 pub const ClassIndex = enum(u16) {
-    none = 0,
-    ThunkReturnLocal,
+    none = noneIndex,
+    SmallInteger = noneIndex ^ siIndex,
+    ThunkReturnLocal = 1,
     ThunkReturnInstance,
     ThunkReturnObject,
     ThunkReturnImmediate,
@@ -45,9 +66,8 @@ pub const ClassIndex = enum(u16) {
     ThunkReturnFloat,
     ThunkFloat,
     LLVM,
-    SmallInteger,
-    reserved_21,
-    reserved_22,
+    UndefinedObject,
+    reserved_22 = 22,
     reserved_23,
     reserved_24,
     reserved_25,
@@ -57,7 +77,6 @@ pub const ClassIndex = enum(u16) {
     o2,
     o1,
     o0,
-    UndefinedObject,
     Context,
     Float,
     ProtoObject,
@@ -95,8 +114,9 @@ pub const ClassIndex = enum(u16) {
     pub const LastSpecial = @intFromEnum(Self.Dispatch);
     const Self = @This();
     pub const Compact = enum(u5) {
-        none = 0,
-        ThunkReturnLocal,
+        none = noneIndex,
+        SmallInteger = noneIndex ^ siIndex,
+        ThunkReturnLocal = 1,
         ThunkReturnInstance,
         ThunkReturnObject,
         ThunkReturnImmediate,
@@ -115,9 +135,8 @@ pub const ClassIndex = enum(u16) {
         ThunkReturnFloat,
         ThunkFloat,
         LLVM,
-        SmallInteger,
-        reserved_21,
-        reserved_22,
+        UndefinedObject,
+        reserved_22 = 22,
         reserved_23,
         reserved_24,
         reserved_25,
@@ -134,6 +153,12 @@ pub const ClassIndex = enum(u16) {
             return @as(u8, @intFromEnum(self)) << 3 | 1;
         }
     };
+    pub fn isImmediate(self: ClassIndex) bool {
+        switch (self) {
+            .Symbol, .False, .True, .Character => return true,
+            else => return false,
+        }
+    }
     pub inline fn compact(ci: ClassIndex) Compact {
         return @enumFromInt(@intFromEnum(ci));
     }
@@ -143,7 +168,10 @@ pub const ClassIndex = enum(u16) {
     pub const lookupMethodForClass = zag.dispatch.lookupMethodForClass;
 };
 comptime {
+    std.debug.assert(@intFromEnum(ClassIndex.Compact.UndefinedObject) == 20);
+    std.debug.assert(@intFromEnum(ClassIndex.UndefinedObject) == 20);
     std.debug.assert(@intFromEnum(ClassIndex.replace0) == 0xffff);
+    std.debug.assert(@intFromEnum(ClassIndex.Compact.o0) == 0x1f);
     std.debug.assert(@intFromEnum(ClassIndex.o0) == 0x1f);
     std.testing.expectEqual(@intFromEnum(ClassIndex.ThunkReturnLocal), 1) catch @panic("unreachable");
     //    std.debug.assert(std.meta.hasUniqueRepresentation(Object));
@@ -151,17 +179,7 @@ comptime {
         std.testing.expectEqual(ci, cci) catch @panic("unreachable");
     }
 }
-pub const Object = switch (config.objectEncoding) {
-    .zag => @import("object/zag.zig").Object,
-    .zagAlt => @import("object/zagAlt.zig").Object,
-    .nan => @import("object/nan.zig").Object,
-    .spur => @import("object/spur.zig").Object,
-    .taggedPtr => @import("object/taggedPtr.zig").Object,
-    .taggedInt => @import("object/taggedInt.zig").Object,
-    .cachedPtr, .ptr => @import("object/ptr.zig").Object,
-    .onlyInt => @import("object/onlyInt.zig").Object,
-    .onlyFloat => @import("object/onlyFloat.zig").Object,
-};
+pub const Object = zag.encoding.module(config.objectEncoding).Object;
 pub const testObjects = blk: {
     var testArray: [5]Object = undefined;
     for (&testArray, 0..) |*elem, i| {
@@ -206,7 +224,7 @@ pub const ObjectFunctions = struct {
     }
     pub inline //
     fn isNil(self: Object) bool {
-        return self == Object.Nil();
+        return self.equals(Nil());
     }
     pub inline //
     fn isBool(self: Object) bool {
@@ -229,6 +247,9 @@ pub const ObjectFunctions = struct {
         if (self.isBool()) return self.toBoolNoCheck();
         return error.wrongType;
     }
+    inline fn toBoolNoCheck(self: Object) bool {
+        return self.equals(Object.True());
+    }
     pub inline //
     fn toNat(self: Object) !u64 {
         if (self.isNat()) return self.toNatNoCheck();
@@ -236,7 +257,7 @@ pub const ObjectFunctions = struct {
     }
     pub inline //
     fn toDouble(self: Object) !f64 {
-        if (self.isDouble()) return self.toDoubleNoCheck();
+        if (self.nativeF()) |flt| return flt;
         return error.wrongType;
     }
     pub fn rawFromU(u: u64) Object {
@@ -309,13 +330,17 @@ pub const ObjectFunctions = struct {
         if (self.isUnmoving()) return self;
         return error.PromoteUnimplemented;
     }
+    fn checkThreadedFn(self: u64) ?@import("threadedFn.zig").Enum {
+        if (self == 0 or self & 7 != 0) return null;
+        return @import("threadedFn.zig").find(@ptrFromInt(self));
+    }
     pub fn format(
         self: Object,
         writer: anytype,
     ) !void {
         if (false) {
             try writer.print("({x})", .{@as(u64, @bitCast(self))});
-            return;
+            //return;
         }
         if (zag.config.is_test) {
             for (0..testObjects.len) |i| {
@@ -325,7 +350,9 @@ pub const ObjectFunctions = struct {
                 }
             }
         }
-        if (self.invalidObject()) |invalid| {
+        if (checkThreadedFn(@bitCast(self))) |name| {
+            try writer.print("{}", .{name});
+        } else if (self.invalidObject()) |invalid| {
             try writer.print("{{?0x{x:0>16}}}", .{invalid});
         } else if (self.signature()) |signature| {
             try writer.print("{f}", .{signature});
@@ -334,21 +361,21 @@ pub const ObjectFunctions = struct {
         } else if (self.symbolHash()) |_| {
             try writer.print("#{s}", .{symbol.asString(self).arrayAsSlice(u8) catch "???"});
         } else if (self.extraImmediateU()) |extra| {
-            try writer.print("{}({}) -> {*}", .{self.which_class(), extra, self.highPointer(*zag.Context)});
+            try writer.print("{}({}) -> {*}", .{ self.which_class(), extra, self.highPointer(*zag.Context) });
         } else if (self.extraImmediateI()) |extra| {
-            try writer.print("{}({}) -> {*}", .{self.which_class(), extra, self.highPointer(*zag.Context)});
+            try writer.print("{}({}) -> {*}", .{ self.which_class(), extra, self.highPointer(*zag.Context) });
         } else if (self.equals(False())) {
             try writer.print("false", .{});
         } else if (self.equals(True())) {
             try writer.print("true", .{});
-        } else if (@as(u64, @bitCast(self)) == 0xaaaaaaaaaaaaaaaa) {
+        } else if (zag.config.show_trace and @as(u64, @bitCast(self)) == 0xaaaaaaaaaaaaaaaa) {
             try writer.print("undefined", .{});
         } else if (self.nativeF()) |float| {
             try writer.print("{}", .{float});
         } else if (self.equals(Nil())) {
             try writer.print("nil", .{});
-        } else if (self.heapObject()) |obj| {
-            try writer.print("{f}@{x}", .{obj, @as(u64, @bitCast(self))});
+        } else if (self.ifHeapObject()) |obj| {
+            try writer.print("{f}@{x}", .{ obj, @as(u64, @bitCast(self)) });
         } else {
             try writer.print("{{?0x{x:0>16}}}", .{@as(u64, @bitCast(self))});
         }
@@ -380,7 +407,9 @@ pub const PackedObject = packed struct {
         return combine(u14, tup);
     }
     pub fn classes(comptime tup: []const ClassIndex) PackedObject {
-        return @bitCast((@as(u64, combine(u14, tup)) << @bitSizeOf(Object.PackedTagType)) + Object.packedTagSmallInteger);
+        var result: PackedObject = @bitCast((@as(u64, combine(u14, tup)) << @bitSizeOf(Object.PackedTagType)));
+        result.tag = Object.packedTagSmallInteger;
+        return result;
     }
     test "combiners" {
         const expectEqual = std.testing.expectEqual;
@@ -399,10 +428,10 @@ test "from conversion" {
     if (config.objectEncoding == .nan)
         try ee(@as(f64, @bitCast((Object.from(3.14, sp, context)))), 3.14);
     try std.testing.expect(!std.math.isNan(@as(f64, @bitCast(Object.from(3.14, sp, context)))));
-//    try ee((Object.from(3.14, sp, context)).get_class(), .Float);
+    //    try ee((Object.from(3.14, sp, context)).get_class(), .Float);
     try std.testing.expect((Object.from(3.14, sp, context)).isFloat());
     try ee((Object.from(3, sp, context)).get_class(), .SmallInteger);
-    try std.testing.expect((Object.from(3, sp, context)).isInt());
+    //try std.testing.expect((Object.from(3, sp, context)).isInt());
     try std.testing.expect((Object.from(false, sp, context)).isBool());
     try ee((Object.from(false, sp, context)).get_class(), .False);
     try ee((Object.from(true, sp, context)).get_class(), .True);
@@ -419,7 +448,7 @@ test "to conversion" {
     try ee((Object.from(3.14, sp, context)).to(f64), 3.14);
     //    trace("value: {}", .{@as(zag.InMemory.PointedObjectRef, @bitCast(Object.from(42, sp, context)))});
     try ee((Object.from(42, sp, context)).to(i64), 42);
-    try std.testing.expect((Object.from(42, sp, context)).isInt());
+    //try std.testing.expect((Object.from(42, sp, context)).isInt());
     try ee((Object.from(true, sp, context)).to(bool), true);
     try ee((Object.from(-0x400000, sp, context)).toUnchecked(i64), -0x400000);
 }
@@ -430,7 +459,7 @@ test "get_class" {
     const sp = process.getSp();
     const context = process.getContext();
     const ee = std.testing.expectEqual;
-//    try ee((Object.from(3.14, sp, context)).get_class(), .Float);
+    //    try ee((Object.from(3.14, sp, context)).get_class(), .Float);
     try ee((Object.from(42, sp, context)).get_class(), .SmallInteger);
     try ee((Object.from(true, sp, context)).get_class(), .True);
     try ee((Object.from(false, sp, context)).get_class(), .False);

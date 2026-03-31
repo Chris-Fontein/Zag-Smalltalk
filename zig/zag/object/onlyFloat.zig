@@ -6,6 +6,7 @@ const zag = @import("../zag.zig");
 const config = zag.config;
 const assert = std.debug.assert;
 const object = zag.object;
+const HeapObject = zag.heap.HeapObject;
 const ClassIndex = object.ClassIndex;
 
 pub const Object = packed struct(u64) {
@@ -26,36 +27,25 @@ pub const Object = packed struct(u64) {
     }
 
     pub const maxInt = 0x7fff_ffff_ffff_ffff;
-    pub const tagged0: i64 = 0;
     pub const LowTagType = void;
     pub const lowTagSmallInteger = {};
     pub const HighTagType = void;
     pub const highTagSmallInteger = {};
     pub const PackedTagType = u3;
     pub const packedTagSmallInteger = 0;
-    pub const intTag = @import("zag.zig").Object.intTag;
-    pub const immediatesTag = 0;
+    pub const signatureTag = 0;
 
     pub inline fn untaggedI(_: Object) ?i64 {
         @panic("not implemented");
     }
 
-    inline fn untaggedI_noCheck(_: Object) i64 {
-        @panic("not implemented");
-    }
-
     pub const taggedI = untaggedI;
-    const taggedI_noCheck = untaggedI_noCheck;
 
     pub inline fn fromTaggedI(_: i64, _: anytype, _: anytype) Object {
         @panic("not implemented");
     }
 
     pub const fromUntaggedI = fromTaggedI;
-
-    pub inline fn symbol40(self: Object) u40 {
-        return @truncate(self.rawU());
-    }
 
     pub inline fn nativeI(_: Object) ?i64 {
         @panic("not implemented");
@@ -67,10 +57,6 @@ pub const Object = packed struct(u64) {
 
     pub inline fn isFloat(_: Object) bool {
         return true;
-    }
-
-    pub inline fn nativeF_noCheck(self: Object) f64 {
-        return @bitCast(self);
     }
 
     pub inline fn fromNativeF(f: f64, _: anytype, _: anytype) Object {
@@ -92,7 +78,7 @@ pub const Object = packed struct(u64) {
     pub const testU = rawU;
     pub const testI = rawI;
 
-    pub inline fn rawU(self: Object) u64 {
+    inline fn rawU(self: Object) u64 {
         return @bitCast(self);
     }
 
@@ -105,23 +91,11 @@ pub const Object = packed struct(u64) {
         return null;
     }
 
-    pub inline fn thunkImmediate(o: Object) ?Object {
-        _ = .{ o, unreachable };
-    }
-
-    pub inline fn thunkImmediateValue(self: Self) Object {
-        _ = .{ self, unreachable };
-    }
-
     pub inline fn isImmediateClass(_: Object, comptime _: ClassIndex) bool {
         return false;
     }
 
-    pub inline fn isMemoryDouble(_: Object) bool {
-        return false;
-    }
-
-    pub inline fn isInt(_: Object) bool {
+    inline fn isInt(_: Object) bool {
         return false;
     }
 
@@ -133,20 +107,12 @@ pub const Object = packed struct(u64) {
         return true;
     }
 
-    pub inline fn hasPointer(_: Object) bool {
-        return false;
-    }
-
     pub inline fn highPointer(_: Object, T: type) ?T {
         @panic("Not implemented");
     }
 
     pub inline fn pointer(_: Object, T: type) ?T {
         @panic("Not implemented");
-    }
-
-    pub inline fn toBoolNoCheck(self: Object) bool {
-        return self == Object.True();
     }
 
     pub inline fn toIntNoCheck(_: Object) i64 {
@@ -164,9 +130,14 @@ pub const Object = packed struct(u64) {
     inline fn toDoubleFromMemory(_: Object) f64 {
         @panic("Not implemented");
     }
-
-    pub inline fn toDoubleNoCheck(self: Object) f64 {
-        return @bitCast(self);
+    pub fn returnObjectClosure(_: Object, _: anytype) ?Object {
+        return null;
+    }
+    pub fn returnLocalClosure(_: Object, _: anytype) ?Object {
+        return null;
+    }
+    pub fn immediateClosure(_: anytype, _: anytype, _: anytype) ?Object {
+        @panic("Not implemented");
     }
 
     pub inline fn makeImmediate(_: ClassIndex.Compact, hash: u64) Object {
@@ -215,7 +186,7 @@ pub const Object = packed struct(u64) {
     pub fn toWithCheck(self: Object, comptime T: type, comptime _: bool) T {
         switch (T) {
             f64 => {
-                return self.toDoubleNoCheck();
+                if (self.nativeF()) |flt| return flt;
             },
             bool => {
                 return self.toBoolNoCheck();
@@ -235,6 +206,9 @@ pub const Object = packed struct(u64) {
 
     pub inline fn isHeapObject(_: Object) bool {
         return false;
+    }
+    pub inline fn ifHeapObject(_: object.Object) ?*HeapObject {
+        return null;
     }
 
     const OF = object.ObjectFunctions;

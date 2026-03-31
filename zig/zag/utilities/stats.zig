@@ -35,18 +35,19 @@ const Units = enum {
         };
     }
 };
-pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: ?comptime_int, comptime units: Units) type {
+pub fn Stats(comptime Arg: type, comptime K: type, maxRuns: usize, comptime units: Units) type {
     const T = if (K == void) u64 else K;
     return struct {
-        values: [runs]T = undefined,
+        values: [maxRuns]T = undefined,
         minValue: T = undefined,
         maxValue: T = undefined,
+        product: f64 = undefined,
         n: usize = 0,
         sum: T = 0,
         sumsq: T = 0,
         proof: usize = 0,
-        runs: usize = runs,
-        warmups: usize = if (warmups) |w| w else @min(3, @max(1, (runs + 1) / 3)),
+        runs: usize = 0,
+        warmups: usize = 0,
         const Self = @This();
         pub fn print(self: *Self) void {
             std.log.err("sum={} sumsq={} n={} values={any}\n", .{ self.sum, self.sumsq, self.n, self.values });
@@ -56,13 +57,15 @@ pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: 
             else => false,
         };
         const scale = units.scale();
-        pub fn init() Self {
-            return .{};
+        pub fn init(runs: usize, warmups: ?usize) Self {
+            std.debug.assert(runs <= maxRuns);
+            return .{ .runs = runs, .warmups = if (warmups) |w| w else @min(3, @max(1, (runs + 1) / 3)) };
         }
         pub fn reset(self: *Self) void {
             self.n = 0;
             self.sum = 0;
             self.sumsq = 0;
+            self.product = 1.0;
         }
         pub fn run(self: *Self, runner: *const fn (usize) T) void {
             for (0..self.warmups) |_| _ = runner(0);
@@ -70,7 +73,7 @@ pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: 
                 self.addData(runner(runNumber));
             }
         }
-        pub fn time(self: *Self, runner: *const fn (comptime Arg, usize) usize, comptime param: Arg) void {
+        pub fn time(self: *Self, runner: *const fn (Arg, usize) usize, param: Arg) void {
             for (0..self.warmups) |_| {
                 self.proof = @call(.never_inline, runner, .{ param, self.proof });
             }
@@ -85,7 +88,7 @@ pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: 
         pub fn addData(self: *Self, data: T) void {
             if (self.n == 0 or data < self.minValue) self.minValue = data;
             if (self.n == 0 or data > self.maxValue) self.maxValue = data;
-            if (runs > self.n) {
+            if (self.runs > self.n) {
                 var i = self.n;
                 while (i > 0) : (i -= 1) {
                     if (self.values[i - 1] <= data) break;
@@ -95,14 +98,19 @@ pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: 
             }
             self.sum += data;
             self.sumsq += data * data;
+            self.product *= @floatFromInt(data);
             self.n += 1;
         }
         pub fn median(self: *Self) ?T {
-            if (runs == 0 or runs < self.n) return null;
+            if (self.runs == 0 or self.runs < self.n) return null;
             return if (isInt or self.n % 2 == 1) self.values[self.n / 2] else (self.values[self.n / 2 - 1] + self.values[self.n / 2]) / 2;
         }
         pub fn mean(self: Self) T {
             return if (isInt) self.sum / self.n else self.sum / @as(f64, @floatFromInt(self.n));
+        }
+        pub fn geometricMean(self: Self) T {
+            const power = 1.0 / @as(f64, @floatFromInt(self.n));
+            return @intFromFloat(std.math.pow(f64, self.product, power));
         }
         inline fn asFloat(v: T) f64 {
             return if (isInt) @floatFromInt(v) else v;
@@ -138,11 +146,12 @@ pub fn Stats(comptime Arg: type, comptime K: type, runs: comptime_int, warmups: 
             } else {
                 const opts: []const u8 = comptime if (isInt) "{}" else "{d:.2}";
                 var percent = false;
-                inline for ("n--m--x--s") |f| {
+                inline for ("n--m--x--s--G") |f| {
                     switch (f) {
                         'n' => try writer.print(opts, .{self.minValue}),
                         'm' => try writer.print(opts, .{self.mean()}),
                         'M' => try writer.print(opts, .{self.median()}),
+                        'G' => try writer.print(opts, .{self.geometricMean()}),
                         'x' => try writer.print(opts, .{self.maxValue}),
                         'r' => try writer.print(opts, .{(self.maxValue - self.minValue) / 2}),
                         '%' => percent = true,

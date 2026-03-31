@@ -12,7 +12,7 @@ Class {
 { #category : 'converting' }
 ZagImageEncodeNan class >> boolean: value [
 
-	^ self literal: value asBit class: ClassFalse + value asBit
+	^ self literal: 0 class: ClassFalse + value asBit
 ]
 
 { #category : 'converting' }
@@ -21,44 +21,37 @@ ZagImageEncodeNan class >> double: n for: ignored [
 	^ ('16r' , n hex) asNumber
 ]
 
-{ #category : 'private - constants' }
-ZagImageEncodeNan class >> groupHeap [
-
-	^ 16rfff7000000000000
-]
-
-{ #category : 'private - constants' }
-ZagImageEncodeNan class >> groupImmediates [
-
-	^ 16rfff0000000000000
-]
-
-{ #category : 'private - constants' }
-ZagImageEncodeNan class >> groupSmallInt0 [
-
-	^ 16rfffc000000000000
-]
-
 { #category : 'converting' }
 ZagImageEncodeNan class >> literal: l class: c [
 
-	^ self groupImmediates + l + (c bitShift: 32)
+	^ 16r7fef000000000000 + l + (c bitShift: 48)
+]
+
+{ #category : 'magic' }
+ZagImageEncodeNan class >> magic [
+
+	^ 16r614E616D4967615A " ZagImaNa"
 ]
 
 { #category : 'converting' }
 ZagImageEncodeNan class >> pointer: p [
 
-	^ self groupHeap + p
+	^ 16r7fff000000000000 + p
 ]
 
 { #category : 'converting' }
 ZagImageEncodeNan class >> smallInteger: n [
 
-	^ self groupSmallInt0 + n
+	^ 16rfff8000000000000 + (n bitAnd: 16r7ffffffffffff)
+]
+
+{ #category : 'converting' }
+ZagImageEncodeNan class >> symbolArity: arity hash: hash [ 
+	^ self literal: (hash bitShift: 8) + arity class: ClassSymbol
 ]
 
 { #category : 'converting' }
 ZagImageEncodeNan class >> undefinedObject [
 
-	^ self literal: 16rffffffff class: ClassUndefinedObject
+	^ self literal: 0 class: 16
 ]

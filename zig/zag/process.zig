@@ -1,3 +1,5 @@
+//! Process object layout, stack management, and nursery allocation.
+
 const std = @import("std");
 const math = std.math;
 const assert = std.debug.assert;
@@ -62,7 +64,6 @@ const Process = struct {
         currEnd: HeapObjectArray,
         otherHeap: HeapObjectArray,
         singleStepping: bool,
-        foo: [3]u64,
     };
     const processAvail = (process_total_size - @sizeOf(Fields) - @sizeOf(Context)) / @sizeOf(Object);
     const approx_nursery_size = (processAvail - processAvail / 16) / 2;
@@ -79,9 +80,12 @@ const Process = struct {
         // @compileLog("approx_nursery_size:", approx_nursery_size);
         // @compileLog("stack_size:", stack_size);
         // @compileLog("nursery_size:", nursery_size);
+        // @compileLog("fill_size:", fill_size);
         // @compileLog("alignment:", alignment);
         // @compileLog("stack_mask_overflow:", stack_mask_overflow);
-        assert(stack_size <= nursery_size);
+        assert(stack_size < nursery_size);
+        assert(fill_size <= 1);
+        assert(@offsetOf(Process,"stack") == 0);
     }
     const maxNurseryObjectSize = @min(HeapHeader.maxLength, nursery_size / 4);
 
@@ -128,7 +132,7 @@ const Process = struct {
         }
         return hp;
     }
-    fn copyObject(self: *Process, obj: anytype) @TypeOf(obj) {
+    fn copyObjectAndDependents(self: *Process, obj: anytype) @TypeOf(obj) {
         const result = self.h.currHp;
         const hp = @as(*HeapObject, @ptrCast(result)).copyTo(result, null);
         var sizes = [_]usize{0} ** Age.lastNurseryAge;
@@ -170,6 +174,7 @@ const Process = struct {
     fn dumpHeap(self: *Process) void {
         var scan = self.h.currHeap;
         const hp = self.h.currHp;
+        std.debug.print("heap: {*} {*}\n", .{scan, hp});
         while (@intFromPtr(scan) < @intFromPtr(hp)) {
             std.debug.print("[{x:0>10}]: {f}\n", .{ @intFromPtr(scan), scan[0].header });
             scan = scan[0].skipForward();
@@ -521,7 +526,8 @@ const Stack = struct {
     }
     pub //inline
     fn traceStack(self: SP, why: []const u8, context: *Context, extra: Extra) void {
-        trace("traceStack ({s})", .{why});
+        trace("traceStack ({s}) {} {}", .{why, @intFromPtr(self.endOfStack()) - @intFromPtr(self), self.getStack().len});
+        trace("sp = {*} context = {*} extra = {x}", .{self, context, @as(u64,@bitCast(extra))});
         const selfAddr = extra.selfAddress(self) orelse context.selfAddress(self);
         for (self.getStack()) |*obj| {
             const addr = @intFromPtr(obj);
@@ -579,18 +585,23 @@ const Stack = struct {
         // if the Context is on the stack, the Context, Extra and SP will move
         const process = sp.theProcess();
         const size = (@intFromPtr(sp.endOfStack()) - @intFromPtr(sp)) / @sizeOf(Object);
+        process.dumpHeap();
         process.collectNursery(sp, context, size);
+        process.dumpHeap();
         const stackToCopy = sp.sliceTo(context.endOfStack(sp));
+        sp.dumpStack("original stack in spillStack <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", context, extra);
         context.reify(sp);
-        sp.dumpStack("in spillStack", context, extra);
-        const newContext = process.copyObject(context);
+        sp.dumpStack("reified stack in spillStack  =============================================", context, extra);
+        const newContext = process.copyObjectAndDependents(context);
+        sp.dumpStack("copied stack in spillStack   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", context, extra);
+        process.dumpHeap();
         var n = stackToCopy.len;
-        const newSp = @as([*]Stack, @ptrCast(sp.endOfStack())) - n;
-        const targetStack = @as(SP, @ptrCast(newSp)).slice(n);
+        const targetStack = (@as([*]Object, @ptrCast(sp.endOfStack())) - n)[0..n];
         while (n > 0) : (n -= 1) {
             targetStack[n - 1] = stackToCopy[n - 1];
         }
-        sp.dumpStack("at end of spillStack", newContext, extra);
+        const newSp: SP = @ptrCast(targetStack.ptr);
+        newSp.dumpStack("newSp in spillStack ......................................", newContext, extra);
         @panic("spillStack unfinished");
     }
     pub fn format(

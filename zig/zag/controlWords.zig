@@ -50,6 +50,11 @@ pub const module = struct {
         }
     };
 };
+pub const fail = struct {
+    pub fn threadedFn(_: PC, _: SP, _: *Process, _: *Context, _: Extra) Result {
+        @panic("Failed");
+    }
+};
 pub const branch = struct {
     pub fn threadedFn(pc: PC, sp: SP, process: *Process, context: *Context, extra: Extra) Result {
         const target = pc.targetPC();
@@ -298,7 +303,7 @@ pub const push = struct {
         }
     }
     test {
-        if (true) return error.UnimplementedTest;
+        if (true) return config.skipForDebugging;
         var exe = Execution.initTest("push", .{ tf.pushLocal, 1, tf.pushLocal, 4 });
         try exe.runTest(
             &[_]Object{

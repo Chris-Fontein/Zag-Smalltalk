@@ -31,6 +31,12 @@ ZagImageEncodeZag class >> literal: l class: c [
 	^ (l bitShift: 8) + (c bitShift: 3) + 1
 ]
 
+{ #category : 'magic' }
+ZagImageEncodeZag class >> magic [
+
+	^ 16r615A616D4967615A " ZagImaZa"
+]
+
 { #category : 'converting' }
 ZagImageEncodeZag class >> pointer: p [
 
@@ -43,6 +49,11 @@ ZagImageEncodeZag class >> smallInteger: anInteger [
 	^ self
 		  literal: (anInteger bitAnd: 16r00ffffffffffffff)
 		  class: ClassSmallInteger
+]
+
+{ #category : 'converting' }
+ZagImageEncodeZag class >> symbolArity: arity hash: hash [ 
+	^ self literal: (arity bitShift: 24) + hash class: ClassSymbol
 ]
 
 { #category : 'converting' }

@@ -1,3 +1,5 @@
+//! Bytecode execution engine and method invocation helpers.
+
 const std = @import("std");
 const config = @import("config.zig");
 const tailCall = config.tailCall;
@@ -30,7 +32,7 @@ const globalArena = zag.globalArena;
 const HeapAllocationPtr = globalArena.HeapAllocationPtr;
 //const class = zag.class;
 const symbol = zag.symbol;
-const Sym = symbol.symbols;
+const Sym = symbol.Symbols;
 const threadedFn = zag.threadedFn;
 const tf = threadedFn.Enum;
 
@@ -41,7 +43,7 @@ pub const Signature = packed struct {
     numArgs: u8 = 0,
     class: ClassIndex = .none,
     prim: u8 = 0,
-    const sigTag = @as(u8, @intFromEnum(ClassIndex.Compact.Signature)) << 3 | Object.immediatesTag;
+    const sigTag = @as(u8, @intFromEnum(ClassIndex.Compact.Signature)) << 3 | Object.signatureTag;
     fn isTagged(self: Signature) bool {
         return self.tag == sigTag;
     }
@@ -50,7 +52,7 @@ pub const Signature = packed struct {
         return @bitCast(self);
     }
     pub fn isEmpty(self: Signature) bool {
-        return self.asInt() == sigTag;
+        return self.equals(empty);
     }
     pub fn fullHash(self: Signature) u32 {
         return @truncate(self.asInt());
@@ -64,7 +66,7 @@ pub const Signature = packed struct {
     pub fn fromPrimitive(primitiveNumber: u8) Signature {
         return .{ .prim = primitiveNumber };
     }
-    pub fn fromNameClass(name: anytype, class: ClassIndex) Signature {
+    pub fn fromNameClass(name: symbol.Symbols, class: ClassIndex) Signature {
         return .{ .numArgs = name.numArgs(), .hash = name.symbolHash().?, .class = class };
     }
     pub fn fromClassU8(class: ClassIndex, number: u8) Signature {
@@ -113,7 +115,7 @@ pub const Signature = packed struct {
                 },
                 else => |class| try writer.print("{}", .{class}),
             }
-            try writer.print(" #{s}", .{ symbol.asStringFromHash(@intCast((self.asInt() & 0xffffff00) >> 8)).arrayAsSlice(u8) catch "???" });
+            try writer.print(" #{s}", .{symbol.asStringFromHash(@intCast((self.asInt() & 0xffffff00) >> 8)).arrayAsSlice(u8) catch "???"});
         }
     }
 };
@@ -141,8 +143,7 @@ pub const PC = packed struct {
     pub fn offset(self: PC, cm: *const CompiledMethod) usize {
         return (@intFromPtr(self.code) - @intFromPtr(&cm.code[0])) / @sizeOf(Code);
     }
-    pub inline
-    fn method(self: PC) *const CompiledMethod {
+    pub inline fn method(self: PC) *const CompiledMethod {
         if (logging) |log| {
             @setRuntimeSafety(false);
             log("PC_method:       {x:0>12}: {f}", .{ @intFromPtr(self.code), self.code.method });
@@ -170,14 +171,14 @@ pub const PC = packed struct {
         return primOf("PC_prim:         ", self.code);
     }
     inline fn primOf(str: []const u8, code: *const Code) *const fn (PC, SP, *Process, *Context, Extra) Result {
-        if (logging) | log | {
+        if (logging) |log| {
             // log("{s}{x:0>12}: ", .{ str, @intFromPtr(code) });
             // for ((@as([*]const u64, @ptrCast(code))-10)[0..21]) |*word| {
             //     log("{x:0>16}: {x:0>16}{s}", .{ @intFromPtr(word), word.*, if (@intFromPtr(word) == @intFromPtr(code)) " *" else "" });
             // }
             @setRuntimeSafety(false);
             if (@import("threadedFn.zig").find(code.prim())) |name| {
-                log("{s}{x:0>12}: {}", .{ str, @intFromPtr(code), name });
+                log("{s}{x:0>12}: {} {x}", .{ str, @intFromPtr(code), name, @intFromPtr(code.prim()) });
             } else {
                 log("{s}{x:0>12}: {x}", .{ str, @intFromPtr(code), @intFromPtr(code.prim()) });
             }
@@ -247,6 +248,12 @@ pub const PC = packed struct {
     }
     pub inline fn next2(self: PC) PC {
         return asPC(self.array() + 2);
+    }
+    pub inline fn prim3(self: PC) *const fn (PC, SP, *Process, *Context, Extra) Result {
+        return primOf("PC_prim3:        ", &self.array()[2]);
+    }
+    pub inline fn next3(self: PC) PC {
+        return asPC(self.array() + 3);
     }
     pub inline fn skip(self: PC, n: usize) PC {
         return asPC(self.array() + n);
@@ -370,7 +377,7 @@ pub const Code = union(enum) {
                 if (@import("threadedFn.zig").find(tFn)) |name| {
                     try writer.print("{}", .{name});
                 } else if (@import("primitives.zig").findPrimitiveAtPtr(tFn)) |primitive| {
-                    try writer.print("primitive({s}>>#{s} : {}) {*}", .{primitive.module, primitive.name, primitive.number, tFn });
+                    try writer.print("primitive({s}>>#{s} : {}) {*}", .{ primitive.module, primitive.name, primitive.number, tFn });
                 } else {
                     try writer.print("{*}", .{tFn});
                 }
@@ -437,7 +444,7 @@ pub const CompiledMethod = struct {
             .signature = Signature.fromNameClass(name, .testClass),
             .executeFn = methodFn,
             .jitted = methodFn,
-            .code = .{ Code.primOf(methodFn) },
+            .code = .{Code.primOf(methodFn)},
         };
     }
     pub fn execute(self: *const Self, sp: SP, process: *Process, context: *Context) Result {
@@ -592,14 +599,6 @@ fn CompileTimeMethod(comptime counts: usize) type {
                         code[n] = Code.objectOf(field);
                         n = n + 1;
                     },
-                    bool => {
-                        code[n] = Code.objectOf(if (field) True() else False());
-                        n = n + 1;
-                    },
-                    @TypeOf(null) => {
-                        code[n] = Code.objectOf(Nil());
-                        n = n + 1;
-                    },
                     PackedObject => {
                         code[n] = Code.packedObjectOf(field);
                         n = n + 1;
@@ -657,8 +656,7 @@ fn CompileTimeMethod(comptime counts: usize) type {
                             if (index >= literals.len) return error.Unresolved;
                             if (literals[index].signature()) |signature| {
                                 c.* = Code.signatureOf(signature);
-                            } else
-                                c.* = Code.objectOf(literals[index]);
+                            } else c.* = Code.objectOf(literals[index]);
                             offset.* = .none;
                         }
                     },
@@ -743,7 +741,7 @@ const p = @import("threadedFn.zig").Enum;
 test "compiling method" {
     const expectEqual = std.testing.expectEqual;
     //@compileLog(&p.send);
-    const exe = Execution.init( .{
+    const exe = Execution.init(.{
         ":abc", p.branch,
         "def",  "0True",
         o0,     ":def",
@@ -1005,9 +1003,9 @@ pub const Execution = struct {
             }
             pub fn execute(self: *Self, stackObjects: ?[]const Object) void {
                 self.init(stackObjects);
-//                self.resolve(Object.empty) catch @panic("Failed to resolve");
+                //                self.resolve(Object.empty) catch @panic("Failed to resolve");
                 _ = self.method.execute(self.getSp(), self.getProcess(), self.getContext());
-//                self.getSp().traceStack("return from execution", self.getContext(), Extra.none);
+                //                self.getSp().traceStack("return from execution", self.getContext(), Extra.none);
             }
             pub fn matchStack(self: *Self, expected: []const Object) !void {
                 const result = self.stack();
@@ -1083,13 +1081,13 @@ pub fn expectEqualSlices(expected: []const Object, result: []const Object) !void
     };
     std.debug.print("first difference at index {d}\n", .{index});
     std.debug.print("expected:  {{", .{});
-    for (expected, 0..) |obj,i| {
+    for (expected, 0..) |obj, i| {
         if (i > 0) std.debug.print(", ", .{});
         std.debug.print("{f}", .{obj});
     }
     std.debug.print("}}\n", .{});
     std.debug.print("but found: {{", .{});
-    for (result, 0..) |obj,i| {
+    for (result, 0..) |obj, i| {
         if (i > 0) std.debug.print(", ", .{});
         std.debug.print("{f}", .{obj});
     }

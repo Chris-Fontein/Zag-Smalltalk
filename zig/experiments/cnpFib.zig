@@ -8,7 +8,7 @@ const Object = zag.Object;
 const MainExecutor = zag.execute.Execution.MainExecutor;
 const compileMethod = zag.execute.compileMethod;
 const tf = zag.threadedFn.Enum;
-const Sym = zag.symbol.symbols;
+const Sym = zag.symbol.Symbols;
 const SmallInteger = zag.primitives.primitives.SmallInteger;
 const Float = zag.primitives.primitives.Float;
 const PC = zag.execute.PC;
@@ -64,9 +64,10 @@ const cnpThreaded = struct {
             cnp.dump();
         } else {
             const threaded = runIt({}, 0);
+            _ = threaded;
         }
     }
-    fn runIt(comptime _: void, proof: usize) usize {
+    fn runIt(_: void, proof: usize) usize {
         const obj = exe.sendTo(Sym.value.asObject(), exe.object(cnpN)) catch unreachable;
         if (obj.nativeI()) |result| {
             return @as(u64, @bitCast(result)) + proof;
@@ -119,7 +120,7 @@ fn includeFor(benchmark: anytype) bool {
 const Stats = zag.Stats;
 pub fn timing(args: []const []const u8, default: bool) !void {
     const eql = std.mem.eql;
-    var stat = Stats(void, void, nRuns, warmups, .milliseconds).init();
+    var stat = Stats(void, void, 100, .milliseconds).init(nRuns, warmups);
     var saved: ?*Info = null;
     for (args) |arg| {
         if (eql(u8, arg, "Config")) {

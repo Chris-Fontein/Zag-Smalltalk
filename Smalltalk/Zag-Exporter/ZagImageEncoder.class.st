@@ -35,6 +35,12 @@ ZagImageEncoder class >> literal: l class: c [
 	^ self subclassResponsibility
 ]
 
+{ #category : 'magic' }
+ZagImageEncoder class >> magic [
+
+	^ self subclassResponsibility 
+]
+
 { #category : 'converting' }
 ZagImageEncoder class >> pointer: p [
 
@@ -43,6 +49,12 @@ ZagImageEncoder class >> pointer: p [
 
 { #category : 'converting' }
 ZagImageEncoder class >> smallInteger: aNumber [
+
+	^ self subclassResponsibility
+]
+
+{ #category : 'converting' }
+ZagImageEncoder class >> symbolArity: arity hash: hash [
 
 	^ self subclassResponsibility
 ]
